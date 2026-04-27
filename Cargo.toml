@@ -31,7 +31,7 @@ tray-icon = "0.22.0"
 
 tauri-winrt-notification = "0.7.2"
 
-dashmap = "6.1.0"
+dashmap = "=7.0.0-rc2"
 scopeguard = "1.2.0"
 windows_pnp = { path = "libs/windows_pnp" }
 winit = "0.30.13"
