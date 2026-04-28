@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use anyhow::{Context, Result, anyhow};
 use dashmap::DashMap;
 use futures::{StreamExt, future::join_all};
-use log::{info, warn};
+use log::{error, info, warn};
 use tokio::{
     sync::{Mutex, mpsc::Sender},
     time::{Duration, Instant},
@@ -116,7 +116,7 @@ async fn get_ble_battery_gatt_char(ble_device: &BluetoothLEDevice) -> Result<Gat
     let battery_gatt_service = battery_gatt_services
         .into_iter()
         .next()
-        .ok_or(anyhow!("Failed to get BLE Battery Gatt Service"))?; // [*] 手机蓝牙无电量服务;
+        .ok_or_else(|| anyhow!("Failed to get BLE Battery Gatt Service"))?; // [*] 手机蓝牙无电量服务;
 
     let battery_gatt_chars = battery_gatt_service
         .GetCharacteristicsForUuidAsync(battery_level_uuid)?
@@ -131,13 +131,9 @@ async fn get_ble_battery_gatt_char(ble_device: &BluetoothLEDevice) -> Result<Gat
 
     let battery_gatt_char_uuid = battery_gatt_char.Uuid()?;
 
-    if battery_gatt_char_uuid == battery_level_uuid {
-        Ok(battery_gatt_char)
-    } else {
-        Err(anyhow!(
-            "Failed to match BLE level UUID:\n{battery_gatt_char_uuid:?}:\n{battery_level_uuid:?}"
-        ))
-    }
+    (battery_gatt_char_uuid == battery_level_uuid)
+        .then_some(battery_gatt_char)
+        .ok_or_else(|| anyhow!("Failed to get BLE Battery Gatt Characteristic"))
 }
 
 async fn get_ble_battery_level(ble_device: &BluetoothLEDevice) -> Result<u8> {
@@ -184,7 +180,8 @@ async fn watch_ble_device(
                 if let Some(ble) = sender.as_ref() {
                     let status = ble.ConnectionStatus()? == BluetoothConnectionStatus::Connected;
                     let _ = tx_status
-                        .try_send(BluetoothLEUpdate::ConnectionStatus(ble_address, status));
+                        .try_send(BluetoothLEUpdate::ConnectionStatus(ble_address, status))
+                        .inspect_err(|e| error!("Failed to send BLE status update: {e}"));
                 }
                 Ok(())
             },
@@ -200,8 +197,9 @@ async fn watch_ble_device(
                     let value = args.CharacteristicValue()?;
                     let reader = DataReader::FromBuffer(&value)?;
                     let battery = reader.ReadByte()?;
-                    let _ =
-                        tx_battery.try_send(BluetoothLEUpdate::BatteryLevel(ble_address, battery));
+                    let _ = tx_battery
+                        .try_send(BluetoothLEUpdate::BatteryLevel(ble_address, battery))
+                        .inspect_err(|e| error!("Failed to send BLE battery update: {e}"));
                 }
                 Ok(())
             },
@@ -240,12 +238,11 @@ pub async fn watch_ble_devices_async(
         .filter_map(|address| {
             let original_ble_devices_address = original_ble_devices_address.clone();
             async move {
-                match get_ble_device_from_address(address).await {
-                    Ok(ble_device) => {
-                        original_ble_devices_address.lock().await.insert(address);
-                        Some((address, ble_device))
-                    }
-                    Err(_) => None,
+                if let Ok(ble_device) = get_ble_device_from_address(address).await {
+                    original_ble_devices_address.lock().await.insert(address);
+                    Some((address, ble_device))
+                } else {
+                    None
                 }
             }
         })
@@ -275,9 +272,7 @@ pub async fn watch_ble_devices_async(
     loop {
         tokio::select! {
             maybe_update= rx.recv() => {
-                let Some(update) = maybe_update else {
-                    return Err(anyhow!("Channel closed while watching BLE devices"));
-                };
+                let update = maybe_update.ok_or_else(|| anyhow!("Channel closed while watching BLE devices"))?;
 
                 let mut need_update_tray = false;
 
@@ -417,7 +412,7 @@ pub async fn watch_ble_devices_async(
                                 continue;
                             };
 
-                            let name = ble_device.Name().map_or("Unknown name".to_owned(), |n| n.to_string());
+                            let name = ble_device.Name().unwrap_or_else(|_| "Unknown name".into());
 
                             match watch_ble_device(added_device_address, ble_device, tx.clone()).await  {
                                 Ok(watch_ble_guard) => {

@@ -100,7 +100,7 @@ impl App {
     async fn new() -> Self {
         {
             Self::send_low_battery_notification();
-            Self::handle_show_lowest_battery_device();
+            Self::show_lowest_battery_device();
         }
 
         let mut menu_manager = MenuManager::new();
@@ -132,7 +132,7 @@ impl App {
         });
     }
 
-    fn handle_show_lowest_battery_device() {
+    fn show_lowest_battery_device() {
         let should_show_lowest_battery_device = CONFIG
             .read()
             .unwrap()
@@ -278,7 +278,7 @@ impl ApplicationHandler<UserEvent> for App {
             }
             UserEvent::Notify(notify_event) => notify_event.send(self.notified_devices.clone()),
             UserEvent::UpdateTrayIcon => {
-                Self::handle_show_lowest_battery_device();
+                Self::show_lowest_battery_device();
 
                 let Some(icon) = create_tray_icon() else {
                     return;
@@ -341,8 +341,9 @@ impl ApplicationHandler<UserEvent> for App {
                     .set_tooltip(Some(bluetooth_tooltip_info));
             }
             UserEvent::UpdateTray => {
-                // 不创建 UserEvent::HandShowLowestBatteryDevice 事件，是因为 UserEVent 是非同步的，会导致菜单项未得到及时更新
-                Self::handle_show_lowest_battery_device();
+                // 不创建 UserEvent::ShowLowestBatteryDevice 事件，是因为 .send_event 是非阻塞的的
+                // 如果 UpdateTrayIcon 和 UpdateTrayMenu 同时发起，图标更新了但菜单可能未能及时更新
+                Self::show_lowest_battery_device();
 
                 let proxy = PROXY.get().unwrap();
                 let _ = proxy.send_event(UserEvent::UpdateTrayIcon);
@@ -394,7 +395,9 @@ fn pump_messages() {
                 let _ = DispatchMessageW(&msg);
             }
             count += 1;
-            if start.elapsed().as_millis() > 10 { break; }
+            if start.elapsed().as_millis() > 10 {
+                break;
+            }
         }
     }
 }

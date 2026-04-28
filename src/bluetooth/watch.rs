@@ -9,9 +9,12 @@ use super::{
 };
 use crate::{PROXY, UserEvent, bluetooth::info::BluetoothType, notify::NotifyEvent};
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, AtomicUsize, Ordering},
+use std::{
+    ops::Not,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
 };
 
 use anyhow::{Context, Result, anyhow};
@@ -119,12 +122,13 @@ async fn check_presence_async(
                         let _ = tx.send((ble_info, presence)).await;
                     }
                     Err(e) => {
-                        let name = match ble_device.Name() {
-                            Ok(name) if !name.is_empty() => name.to_string(),
-                            _ => "Unknown name".to_owned(),
-                        };
-                        let error = format!("BLE [{name}]: Failed to get info: {e}");
-                        return Err(anyhow!(error));
+                        let name = ble_device
+                            .Name()
+                            .ok()
+                            .filter(|name| name.is_empty().not())
+                            .unwrap_or_else(|| "Unknown name".into());
+
+                        return Err(anyhow!("BLE [{name}]: Failed to get info: {e}"));
                     }
                 }
             } else {
@@ -144,12 +148,13 @@ async fn check_presence_async(
                         let _ = tx.send((btc_info, presence)).await;
                     }
                     Err(e) => {
-                        let name = match btc_device.Name() {
-                            Ok(name) if !name.is_empty() => name.to_string(),
-                            _ => "Unknown name".to_owned(),
-                        };
-                        let error = format!("BTC [{name}]: Failed to get info: {e}");
-                        return Err(anyhow!(error));
+                        let name = btc_device
+                            .Name()
+                            .ok()
+                            .filter(|name| name.is_empty().not())
+                            .unwrap_or_else(|| "Unknown name".into());
+
+                        return Err(anyhow!("BTC [{name}]: Failed to get info: {e}"));
                     }
                 }
             };
@@ -346,10 +351,9 @@ async fn watch_bt_presence_async(
                         BluetoothPresence::Added => (), // 原设备未被移除
                         BluetoothPresence::Removed => {
                             let removed_info = BT_INFO_MAP.remove(&info.address);
-                            let name = match removed_info {
-                                Some((_, i)) if !i.name.is_empty() => i.name,
-                                _ => "Unknown name".to_owned(),
-                            };
+                            let name = removed_info
+                                .filter(|(_, i)| i.name.is_empty().not())
+                                .map_or("Unknown name".to_owned(), |(_, i)| i.name);
                             update_event(presence, name);
                         }
                     }

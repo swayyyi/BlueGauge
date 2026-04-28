@@ -73,24 +73,29 @@ pub async fn get_btc_devices_info(
 ) -> Result<DashMap<u64, BluetoothInfo>> {
     // [!] 获取Pnp设备可能出错（初始化可能失败），需重试多次避开错误
     let pnp_devices_info = {
-        let max_retries = 2;
-        let mut attempts = 0;
+        const MAX_RETRIES: u32 = 2;
+        let mut attempt = 0;
 
         loop {
-            let pnp_devices = get_pnp_devices().await?;
-            match get_pnp_devices_info(pnp_devices).await {
+            attempt += 1;
+            let result = (async {
+                let pnp_devices = get_pnp_devices().await?;
+                get_pnp_devices_info(pnp_devices).await
+            })
+            .await;
+
+            match result {
                 Ok(info) => break info,
-                Err(e) => {
-                    attempts += 1;
-                    if attempts >= max_retries {
-                        return Err(anyhow!(
-                            "Trying to enumerate the pnp device twice failed: {e}"
-                        )); // 达到最大重试次数，返回错误
-                    }
+                Err(e) if attempt < MAX_RETRIES => {
                     error!(
-                        "Failed to get Bluetooth device information: {e}, try again after 2 seconds... (try {attempts}/{max_retries})"
+                        "Failed to get PnP device information: {e}, retrying in 2 seconds... (attempt {attempt}/{MAX_RETRIES})"
                     );
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                }
+                Err(e) => {
+                    return Err(anyhow!(
+                        "Failed to enumerate PnP devices after {MAX_RETRIES} attempts: {e}"
+                    ));
                 }
             }
         }
@@ -228,11 +233,7 @@ trait CfgRetExt {
 
 impl CfgRetExt for CONFIGRET {
     fn to_result(self) -> Result<(), CONFIGRET> {
-        if self == CR_SUCCESS {
-            Ok(())
-        } else {
-            Err(self)
-        }
+        (self == CR_SUCCESS).then_some(()).ok_or(self)
     }
 }
 
@@ -348,7 +349,9 @@ async fn watch_btc_device_status(
             TypedEventHandler::new(move |sender: windows::core::Ref<BluetoothDevice>, _args| {
                 if let Some(btc) = sender.as_ref() {
                     let status = btc.ConnectionStatus()? == BluetoothConnectionStatus::Connected;
-                    let _ = tx_status.try_send((btc_address, status));
+                    let _ = tx_status
+                        .try_send((btc_address, status))
+                        .inspect_err(|e| error!("Failed to send BTC status update: {e}"));
                 }
                 Ok(())
             });
@@ -379,12 +382,11 @@ pub async fn watch_btc_devices_status_async(
         .filter_map(|address| {
             let original_btc_devices_address = original_btc_devices_address.clone();
             async move {
-                match get_btc_device_from_address(address).await {
-                    Ok(btc_device) => {
-                        original_btc_devices_address.lock().await.insert(address);
-                        Some((address, btc_device))
-                    }
-                    Err(_) => None,
+                if let Ok(btc_device) = get_btc_device_from_address(address).await {
+                    original_btc_devices_address.lock().await.insert(address);
+                    Some((address, btc_device))
+                } else {
+                    None
                 }
             }
         })
@@ -410,9 +412,8 @@ pub async fn watch_btc_devices_status_async(
     loop {
         tokio::select! {
             maybe_update = rx.recv() => {
-                let Some((address, status)) = maybe_update else {
-                    return Err(anyhow!("Channel closed while watching BTC devices status"));
-                };
+                let (address, status) = maybe_update.ok_or_else(|| anyhow!("Channel closed while watching BTC devices"))?;
+
                 if let Some(mut update_device) = BT_INFO_MAP.get_mut(&address)
                     && update_device.status != status {
                         info!("BTC [{}]: Status -> {status}", update_device.name);
@@ -462,7 +463,7 @@ pub async fn watch_btc_devices_status_async(
                                 continue;
                             };
 
-                            let name = btc_device.Name().map_or("Unknown name".to_owned(), |n| n.to_string());
+                            let name = btc_device.Name().unwrap_or_else(|_| "Unknown name".into());
 
                             match watch_btc_device_status(added_device_address, btc_device, tx.clone()).await  {
                                 Ok(watch_ble_guard) => {
