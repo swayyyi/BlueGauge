@@ -58,7 +58,7 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn open() -> Result<Self> {
+    fn open() -> Result<Self> {
         let default_config = Config::default();
 
         Config::read_toml(&CONFIG_PATH).or_else(|e| {
@@ -67,6 +67,11 @@ impl Config {
             std::fs::write(&*CONFIG_PATH, toml_str)?;
             Ok(default_config)
         })
+    }
+
+    pub fn update(&mut self) {
+        let new_config = Config::open().expect("When update config, failed to open config");
+        *self = new_config;
     }
 
     pub fn save_toml(&self) {

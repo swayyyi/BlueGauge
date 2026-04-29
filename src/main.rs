@@ -351,6 +351,8 @@ impl ApplicationHandler<UserEvent> for App {
                 let _ = proxy.send_event(UserEvent::UpdateTrayTooltip);
             }
             UserEvent::Refresh => {
+                CONFIG.write().unwrap().update();
+
                 futures::executor::block_on(async {
                     init_bluetooth_info()
                         .await
