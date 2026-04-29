@@ -135,7 +135,7 @@ Translations are AI-generated and may contain errors. Please help improve them b
 
 ### 1. Unable to obtain 2.4GHz device battery information
 
-Different 2.4GHz devices have different communication protocols, so it is impossible to obtain battery information uniformly.
+Different 2.4GHz devices have different communication protocols, so it is impossible to obtain power information uniformly. To obtain the device's power, you need to obtain the device's VID and PID, and then use Wireshark and USBPcap third-party software to sniff the data packets sent when the device's battery changes, and parse the packets to obtain the power information, which is extremely complicated and troublesome.
 
 **Solution:**
 
@@ -162,11 +162,11 @@ Connection indicator only supports displaying colors in Windows 11
 
 ### 5. The battery level of the device does not match expectations
 
-It could be that there is a problem with the device reporting (such as a cheap device) that causes only specific values to be reported, such as:
+It may be that the device only reports specific values, such as:
 
-- Only displays multiples of 10%, such as 10%, 20%, 30%...
+- May only show 10%, 20%, 30%, ,..., 100%
 
-- Only specific values such as 0%, 50%, and 100% are displayed regularly
+- May only show 0%, 50%, 100%
 
 ## Other Bluetooth battery display software
 
