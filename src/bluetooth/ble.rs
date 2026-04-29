@@ -285,7 +285,8 @@ pub async fn watch_ble_devices_async(
                         match battery_states.entry(address) {
                             // First time seeing this device
                             Vacant(entry) => {
-                                info!("BLE [{}]: Battery -> {new_battery}", info.name);
+                                let old_battery = info.battery;
+                                info!("BLE [{}]: Battery {old_battery} -> {new_battery}", info.name);
                                 info.battery = new_battery;
                                 need_update_tray = true;
 
@@ -336,7 +337,9 @@ pub async fn watch_ble_devices_async(
                                 }
 
                                 if should_report {
-                                    info!("BLE [{}]: Battery -> {value_to_report}", info.name);
+                                    let name = info.name.clone();
+                                    let old_battery = info.battery;
+                                    info!("BLE [{name}]: Battery {old_battery} -> {value_to_report}");
 
                                     state.last_value = value_to_report;
                                     state.last_update = Instant::now();
@@ -347,7 +350,7 @@ pub async fn watch_ble_devices_async(
 
                                     // 发送通知
                                     let _ = proxy.send_event(UserEvent::Notify(NotifyEvent::LowBattery(
-                                        info.name.clone(),
+                                        name,
                                         value_to_report,
                                         info.address,
                                     )));

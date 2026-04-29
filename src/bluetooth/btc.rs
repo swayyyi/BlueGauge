@@ -303,9 +303,10 @@ pub async fn watch_btc_devices_battery(
 
         let btc_devices = futures::stream::iter(&original_btc_devices_info)
             .filter_map(|info| async move {
+                let original_battery = info.battery;
                 info.get_btc_instance_id()
                     .and_then(read_pnp_device_battery_from_instance_id)
-                    .filter(|battery| battery.ne(&info.battery))
+                    .filter(|current_battery| original_battery.ne(current_battery))
                     .map(|battery| (info.address, battery))
             })
             .collect::<Vec<_>>()
@@ -314,11 +315,13 @@ pub async fn watch_btc_devices_battery(
         let mut need_update = false;
         for (address, new_battery) in btc_devices.into_iter() {
             if let Some(mut info) = BT_INFO_MAP.get_mut(&address) {
-                info!("BTC [{}]: Battery -> {new_battery}", info.name);
+                let name = info.name.clone();
+                let old_battery = info.battery;
+                info!("BTC [{name}]: Battery {old_battery} -> {new_battery}");
                 need_update = true;
                 info.battery = new_battery;
                 let _ = proxy.send_event(UserEvent::Notify(NotifyEvent::LowBattery(
-                    info.name.clone(),
+                    name,
                     new_battery,
                     address,
                 )));

@@ -327,11 +327,11 @@ async fn watch_bt_presence_async(
                     // 因 Watcher 无 Config，需传递给有通知配置的 APP 结构体
                     match presence {
                         BluetoothPresence::Added => {
-                            info!("[{name}]: New Bluetooth Device Connected");
+                            info!("[{name}]: New Bluetooth Device Added");
                             let _ = proxy.send_event(UserEvent::Notify(NotifyEvent::Added(name)));
                         }
                         BluetoothPresence::Removed => {
-                            info!("[{name}]: Bluetooth Device Removed");
+                            info!("[{name}]: Old Bluetooth Device Removed");
                             let _ = proxy.send_event(UserEvent::Notify(NotifyEvent::Removed(name)));
                         }
                     }
@@ -339,7 +339,7 @@ async fn watch_bt_presence_async(
 
                 if let Entry::Vacant(e) = BT_INFO_MAP.entry(info.address) {
                     match presence {
-                        BluetoothPresence::Removed => (), // 原设备无该设备，且该设备实际不存电量服务但可获取得到该服务
+                        BluetoothPresence::Removed => (), // 原设备本就无该设备，无需移除
                         BluetoothPresence::Added => {
                             let name = info.name.clone();
                             e.insert(info);
@@ -348,7 +348,7 @@ async fn watch_bt_presence_async(
                     }
                 } else {
                     match presence {
-                        BluetoothPresence::Added => (), // 原设备未被移除
+                        BluetoothPresence::Added => (), // 原设备本就有该设备，无需添加
                         BluetoothPresence::Removed => {
                             let removed_info = BT_INFO_MAP.remove(&info.address);
                             let name = removed_info
