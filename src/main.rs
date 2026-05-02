@@ -26,8 +26,9 @@ use crate::tray::{
     convert_tray_info, create_tray, create_tray_icon,
     menu::{
         MenuGroup, about,
-        handler::MenuHandler,
+        handler::handle_menu_event,
         item::{MenuAction, create_menu},
+        registry::MenuRegistry,
     },
 };
 
@@ -38,7 +39,6 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::{collections::HashSet, sync::OnceLock};
 
 use log::{error, info};
-use tray_controls::MenuManager;
 use tray_icon::{TrayIcon, menu::MenuEvent};
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, PM_REMOVE, PeekMessageW, TranslateMessage,
@@ -88,7 +88,7 @@ struct App {
     exit_threads: Arc<AtomicBool>,
     /// 存储已经通知过的低电量设备（地址），避免再次通知
     notified_devices: Arc<Mutex<HashSet</* Address */ u64>>>,
-    menu_manager: Mutex<MenuManager<MenuGroup>>,
+    menu_registry: Mutex<MenuRegistry<MenuGroup>>,
     system_theme: Arc<RwLock<SystemTheme>>,
     theme_watcher: Option<ThemeWatcher>,
     tray: Mutex<TrayIcon>,
@@ -103,15 +103,14 @@ impl App {
             Self::show_lowest_battery_device();
         }
 
-        let mut menu_manager = MenuManager::new();
-
-        let tray = create_tray(&mut menu_manager).expect("Failed to create tray");
+        let mut menu_registry = MenuRegistry::new();
+        let tray = create_tray(&mut menu_registry).expect("Failed to create tray");
 
         Self {
             bluetooth_watcher: None,
             exit_threads: Arc::new(AtomicBool::new(false)),
             notified_devices: Arc::new(Mutex::new(HashSet::new())),
-            menu_manager: Mutex::new(menu_manager),
+            menu_registry: Mutex::new(menu_registry),
             system_theme: Arc::new(RwLock::new(SystemTheme::get())),
             theme_watcher: None,
             tray: Mutex::new(tray),
@@ -228,31 +227,33 @@ impl ApplicationHandler<UserEvent> for App {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
             UserEvent::UnCheckDeviceMenu => {
-                if let Some(menu_map) = self
-                    .menu_manager
+                if let Some(radio_group) = self
+                    .menu_registry
                     .lock()
                     .unwrap()
-                    .get_check_items_from_grouped(&MenuGroup::RadioDevice)
+                    .get_radio_menu_from_group(MenuGroup::RadioDevice)
                 {
-                    menu_map.values().for_each(|m| m.set_checked(false));
+                    radio_group.iter().for_each(|m| m.set_checked(false));
                 }
             }
             // 取消勾选 [显示最低电量设备] 和 [设置连接配色]
             UserEvent::UnCheckAboutIconMenu => {
                 if let Some(menu_control) = self
-                    .menu_manager
+                    .menu_registry
                     .lock()
                     .unwrap()
-                    .get_menu_item_from_id(&MenuAction::ShowLowestBatteryDevice.id())
+                    .get_menu_kind_from_id(&MenuAction::ShowLowestBatteryDevice.id())
+                    .and_then(|menu_kind| menu_kind.as_check_menuitem())
                 {
                     menu_control.set_checked(false);
                 }
 
                 if let Some(menu_control) = self
-                    .menu_manager
+                    .menu_registry
                     .lock()
                     .unwrap()
-                    .get_menu_item_from_id(&MenuAction::SetIconConnectColor.id())
+                    .get_menu_kind_from_id(&MenuAction::SetIconConnectColor.id())
+                    .and_then(|menu_kind| menu_kind.as_check_menuitem())
                 {
                     menu_control.set_checked(false);
                 }
@@ -262,19 +263,20 @@ impl ApplicationHandler<UserEvent> for App {
                 event_loop.exit();
             }
             UserEvent::MenuEvent(event) => {
-                let mut menu_manager = self.menu_manager.lock().unwrap();
-                menu_manager.update(event.id(), |menu_control| {
-                    let Some(menu_control) = menu_control else {
-                        error!("Failed to get menu control");
-                        return;
-                    };
+                let click_menu_id = event.id();
 
-                    let menu_handlers = MenuHandler::new(menu_control.clone());
+                let mut menu_registry = self.menu_registry.lock().unwrap();
 
-                    if let Err(e) = menu_handlers.run() {
-                        error!("Failed to handle menu event: {e}")
+                match menu_registry.handle_event(click_menu_id) {
+                    Ok(return_menu_meta) => {
+                        if let Err(e) = handle_menu_event(return_menu_meta) {
+                            error!("Failed to handle menu event: {e}")
+                        }
                     }
-                });
+                    Err(err) => {
+                        error!("Failed to handle menu event: {err}");
+                    }
+                }
             }
             UserEvent::Notify(notify_event) => notify_event.send(self.notified_devices.clone()),
             UserEvent::UpdateTrayIcon => {
@@ -317,8 +319,8 @@ impl ApplicationHandler<UserEvent> for App {
                     .store(false, Ordering::Relaxed);
 
                 let tray_menu = {
-                    let mut menu_manager = self.menu_manager.lock().unwrap();
-                    match create_menu(&mut menu_manager) {
+                    let mut menu_registry = self.menu_registry.lock().unwrap();
+                    match create_menu(&mut menu_registry) {
                         Ok(tray_menu) => tray_menu,
                         Err(e) => {
                             notify(format!("Failed to create tray menu - {e}"));

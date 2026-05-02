@@ -1,14 +1,11 @@
-use super::MenuGroup;
+use super::{MenuGroup, registry::MenuRegistry};
 use crate::bluetooth::BT_INFO_MAP;
 use crate::config::{CONFIG, Direction, TrayIconStyle};
 use crate::language::LOC;
 use crate::startup::get_startup_status;
 
-use std::rc::Rc;
-
 use anyhow::{Context, Result};
 use strum::{AsRefStr, EnumString};
-use tray_controls::{CheckMenuKind, MenuControl, MenuManager};
 use tray_icon::menu::{
     CheckMenuItem, IsMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu,
 };
@@ -23,23 +20,23 @@ pub enum MenuAction {
     Refresh,
     OpenConfig,
     DeviceMenu,
-    // CheckSingle
+    // Normal - CheckSingle
     Startup,
-    // CheckSingle
+    // Normal - CheckSingle
     ShowLowestBatteryDevice,
-    // CheckSingle
+    // Normal - CheckSingle
     SetIconConnectColor,
-    // GroupSingle
+    // Radio
     TrayIconStyleApp,
     TrayIconStyleHorizontalBattery,
     TrayIconStyleVerticalBattery,
     TrayIconStyleNumber,
     TrayIconStyleRing,
-    // GroupMulti
+    // CheckBox
     TrayTooltipShowDisconnected,
     TrayTooltipTruncateName,
     TrayTooltipPrefixBattery,
-    // GroupSingle
+    // Radio
     #[strum(serialize = "0")]
     LowBattery0,
     #[strum(serialize = "5")]
@@ -54,7 +51,7 @@ pub enum MenuAction {
     LowBattery25,
     #[strum(serialize = "30")]
     LowBattery30,
-    // GroupMulti
+    // CheckBox
     NotifyDeviceChangeDisconnection,
     NotifyDeviceChangeReconnection,
     NotifyDeviceChangeAdded,
@@ -68,11 +65,11 @@ impl MenuAction {
     }
 }
 
-struct CreateMenuItem(MenuManager<MenuGroup>);
+struct CreateMenuItem(MenuRegistry<MenuGroup>);
 
 impl CreateMenuItem {
     fn new() -> Self {
-        Self(MenuManager::new())
+        Self(MenuRegistry::<MenuGroup>::new())
     }
 
     fn separator() -> PredefinedMenuItem {
@@ -81,25 +78,29 @@ impl CreateMenuItem {
 
     fn quit(&mut self, text: &str) -> MenuItem {
         let menu_item = MenuItem::with_id(MenuAction::Quit.id(), text, true, None);
-        self.0.insert(MenuControl::MenuItem(menu_item.clone()));
+        self.0
+            .register_normal(menu_item.id().clone(), menu_item.kind());
         menu_item
     }
 
     fn about(&mut self, text: &str) -> MenuItem {
         let menu_item = MenuItem::with_id(MenuAction::About.id(), text, true, None);
-        self.0.insert(MenuControl::MenuItem(menu_item.clone()));
+        self.0
+            .register_normal(menu_item.id().clone(), menu_item.kind());
         menu_item
     }
 
     fn restart(&mut self, text: &str) -> MenuItem {
         let menu_item = MenuItem::with_id(MenuAction::Restart.id(), text, true, None);
-        self.0.insert(MenuControl::MenuItem(menu_item.clone()));
+        self.0
+            .register_normal(menu_item.id().clone(), menu_item.kind());
         menu_item
     }
 
     fn open_config(&mut self, text: &str) -> MenuItem {
         let menu_item = MenuItem::with_id(MenuAction::OpenConfig.id(), text, true, None);
-        self.0.insert(MenuControl::MenuItem(menu_item.clone()));
+        self.0
+            .register_normal(menu_item.id().clone(), menu_item.kind());
         menu_item
     }
 
@@ -108,15 +109,14 @@ impl CreateMenuItem {
         let check_menu_item =
             CheckMenuItem::with_id(MenuAction::Startup.id(), text, true, should_startup, None);
         self.0
-            .insert(MenuControl::CheckMenu(CheckMenuKind::Separate(Rc::new(
-                check_menu_item.clone(),
-            ))));
+            .register_normal(check_menu_item.id().clone(), check_menu_item.kind());
         Ok(check_menu_item)
     }
 
     fn refresh(&mut self, text: &str) -> MenuItem {
         let menu_item = MenuItem::with_id(MenuAction::Refresh.id(), text, true, None);
-        self.0.insert(MenuControl::MenuItem(menu_item.clone()));
+        self.0
+            .register_normal(menu_item.id().clone(), menu_item.kind());
         menu_item
     }
 
@@ -159,11 +159,8 @@ impl CreateMenuItem {
                     show_tray_battery_icon_bt_address.is_some_and(|addr| addr.eq(&info.address)),
                     None,
                 );
-                self.0.insert(MenuControl::CheckMenu(CheckMenuKind::Radio(
-                    Rc::new(menu.clone()),
-                    None,
-                    MenuGroup::RadioDevice,
-                )));
+                self.0
+                    .register_radio(menu_id, menu.kind(), MenuGroup::RadioDevice, None);
                 menu
             })
             .collect::<Vec<CheckMenuItem>>()
@@ -221,12 +218,13 @@ impl CreateMenuItem {
         ]
         .into_iter()
         .for_each(|(menu_id, text, checked)| {
-            let menu = CheckMenuItem::with_id(menu_id, text, true, checked, None);
-            self.0.insert(MenuControl::CheckMenu(CheckMenuKind::Radio(
-                Rc::new(menu.clone()),
-                Some(Rc::new(MenuAction::TrayIconStyleNumber.id())),
+            let menu = CheckMenuItem::with_id(menu_id.clone(), text, true, checked, None);
+            self.0.register_radio(
+                menu_id,
+                menu.kind(),
                 MenuGroup::RadioTrayIconStyle,
-            )));
+                Some(MenuAction::TrayIconStyleNumber.id()),
+            );
             menus.push(menu);
         });
 
@@ -260,12 +258,9 @@ impl CreateMenuItem {
         ]
         .into_iter()
         .for_each(|(menu_id, text, checked)| {
-            let menu = CheckMenuItem::with_id(menu_id, text, true, checked, None);
+            let menu = CheckMenuItem::with_id(menu_id.clone(), text, true, checked, None);
             self.0
-                .insert(MenuControl::CheckMenu(CheckMenuKind::CheckBox(
-                    Rc::new(menu.clone()),
-                    MenuGroup::CheckBoxTrayTooltip,
-                )));
+                .register_checkbox(menu_id, menu.kind(), MenuGroup::CheckBoxTrayTooltip);
             menus.push(menu);
         });
 
@@ -301,11 +296,12 @@ impl CreateMenuItem {
                 None,
             );
 
-            self.0.insert(MenuControl::CheckMenu(CheckMenuKind::Radio(
-                Rc::new(menu.clone()),
-                Some(Rc::new(dafault_menu_id)),
+            self.0.register_radio(
+                menu_id,
+                menu.kind(),
                 MenuGroup::RadioLowBattery,
-            )));
+                Some(dafault_menu_id),
+            );
 
             menu
         })
@@ -344,12 +340,9 @@ impl CreateMenuItem {
         ]
         .into_iter()
         .for_each(|(menu_id, text, checked)| {
-            let menu = CheckMenuItem::with_id(menu_id, text, true, checked, None);
+            let menu = CheckMenuItem::with_id(menu_id.clone(), text, true, checked, None);
             self.0
-                .insert(MenuControl::CheckMenu(CheckMenuKind::CheckBox(
-                    Rc::new(menu.clone()),
-                    MenuGroup::CheckBoxNotify,
-                )));
+                .register_checkbox(menu_id, menu.kind(), MenuGroup::CheckBoxNotify);
             menus.push(menu);
         });
 
@@ -366,13 +359,15 @@ impl CreateMenuItem {
             _ => (false, false),
         };
 
-        let menu =
-            CheckMenuItem::with_id(menu_id, LOC.set_icon_connect_color, enabled, checked, None);
+        let menu = CheckMenuItem::with_id(
+            menu_id.clone(),
+            LOC.set_icon_connect_color,
+            enabled,
+            checked,
+            None,
+        );
 
-        self.0
-            .insert(MenuControl::CheckMenu(CheckMenuKind::Separate(Rc::new(
-                menu.clone(),
-            ))));
+        self.0.register_normal(menu_id, menu.kind());
 
         menu
     }
@@ -391,15 +386,13 @@ impl CreateMenuItem {
         );
 
         self.0
-            .insert(MenuControl::CheckMenu(CheckMenuKind::Separate(Rc::new(
-                menu.clone(),
-            ))));
+            .register_normal(MenuAction::ShowLowestBatteryDevice.id(), menu.kind());
 
         menu
     }
 }
 
-pub fn create_menu(menu_manager: &mut MenuManager<MenuGroup>) -> Result<Menu> {
+pub fn create_menu(menu_manager: &mut MenuRegistry<MenuGroup>) -> Result<Menu> {
     let menu_separator = CreateMenuItem::separator();
 
     let mut create_menu_item = CreateMenuItem::new();

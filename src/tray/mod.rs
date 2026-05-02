@@ -3,7 +3,7 @@ pub mod menu;
 
 use super::tray::{
     icon::{load_app_icon, load_tray_icon},
-    menu::{MenuGroup, item::create_menu},
+    menu::{MenuGroup, item::create_menu, registry::MenuRegistry},
 };
 use crate::{
     bluetooth::BT_INFO_MAP,
@@ -12,7 +12,6 @@ use crate::{
 
 use anyhow::{Result, anyhow};
 use log::error;
-use tray_controls::MenuManager;
 use tray_icon::{TrayIcon, TrayIconBuilder};
 
 pub fn create_tray_icon() -> Option<tray_icon::Icon> {
@@ -37,7 +36,7 @@ pub fn create_tray_icon() -> Option<tray_icon::Icon> {
         })
 }
 
-pub fn create_tray(menu_manager: &mut MenuManager<MenuGroup>) -> Result<TrayIcon> {
+pub fn create_tray(menu_manager: &mut MenuRegistry<MenuGroup>) -> Result<TrayIcon> {
     let icon = create_tray_icon().expect("Failed to create tray's icon");
 
     let tray_menu =
