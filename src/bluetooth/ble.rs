@@ -1,7 +1,4 @@
-use super::{
-    BT_INFO_MAP,
-    info::{BluetoothInfo, BluetoothType},
-};
+use super::info::{BT_INFO_MAP, BluetoothInfo, BluetoothType};
 use crate::{PROXY, UserEvent, notify::NotifyEvent};
 
 use std::collections::{

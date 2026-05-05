@@ -1,9 +1,6 @@
 use super::{
     ble::watch_ble_devices_async,
-    btc::{
-         watch_btc_devices_battery,
-        watch_btc_devices_status_async,
-    },
+    btc::{watch_btc_devices_battery, watch_btc_devices_status_async},
     presence::watch_bt_presence_async,
 };
 

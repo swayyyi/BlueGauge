@@ -13,9 +13,7 @@ mod tray;
 mod util;
 
 use crate::bluetooth::{
-    BT_INFO_MAP,
-    info::{BluetoothInfo, find_bluetooth_devices, get_bluetooth_devices_info},
-    init_bluetooth_info,
+    info::{BT_INFO_MAP, init_bluetooth_info},
     watch::Watcher,
 };
 use crate::config::{CONFIG, EXE_PATH, TrayIconStyle};
@@ -32,11 +30,12 @@ use crate::tray::{
     },
 };
 
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::process::Command;
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
-use std::{collections::HashSet, sync::OnceLock};
 
 use log::{error, info};
 use tray_icon::{TrayIcon, menu::MenuEvent};

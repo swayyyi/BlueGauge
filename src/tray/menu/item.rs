@@ -1,5 +1,5 @@
 use super::{MenuGroup, registry::MenuRegistry};
-use crate::bluetooth::BT_INFO_MAP;
+use crate::bluetooth::info::BT_INFO_MAP;
 use crate::config::{CONFIG, Direction, TrayIconStyle};
 use crate::language::LOC;
 use crate::startup::get_startup_status;

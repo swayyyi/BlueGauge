@@ -1,7 +1,4 @@
-use super::{
-    BT_INFO_MAP,
-    info::{BluetoothInfo, BluetoothType},
-};
+use super::info::{BT_INFO_MAP, BluetoothInfo, BluetoothType};
 use crate::{PROXY, UserEvent, notify::NotifyEvent, util::to_wide};
 
 use std::collections::{HashMap, HashSet};
@@ -379,9 +376,7 @@ pub async fn watch_btc_devices_status_async(
 
     let original_btc_devices_address = Arc::new(Mutex::new(HashSet::new()));
 
-    let addresses_to_process: Vec<_> = get_btc_devices_address();
-
-    let btc_devices = futures::stream::iter(addresses_to_process)
+    let btc_devices = futures::stream::iter(get_btc_devices_address::<Vec<_>>())
         .filter_map(|address| {
             let original_btc_devices_address = original_btc_devices_address.clone();
             async move {

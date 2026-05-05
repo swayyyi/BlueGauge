@@ -3,14 +3,38 @@ use crate::{
         ble::{find_ble_devices, get_ble_devices_info},
         btc::{find_btc_devices, get_btc_devices_info},
     },
+    config::CONFIG,
     notify::notify,
 };
+
+use std::sync::LazyLock;
 
 use anyhow::{Result, anyhow};
 use dashmap::DashMap;
 use log::{info, warn};
 use strum::EnumIs;
 use windows::Devices::Bluetooth::{BluetoothDevice, BluetoothLEDevice};
+
+pub static BT_INFO_MAP: LazyLock<DashMap<u64, BluetoothInfo>> = LazyLock::new(DashMap::new);
+
+pub async fn init_bluetooth_info() -> Result<()> {
+    let (btc_devices, ble_devices) = find_bluetooth_devices().await?;
+    let bt_devices_info = get_bluetooth_devices_info((&btc_devices, &ble_devices)).await?;
+
+    let mut config = CONFIG.write().unwrap();
+
+    BT_INFO_MAP.clear();
+
+    for (addr, i) in bt_devices_info {
+        let name = i.name.clone();
+        BT_INFO_MAP.insert(addr, i);
+        config.device_aliases.entry(name.clone()).or_insert(name);
+    }
+
+    config.save_toml();
+
+    Ok(())
+}
 
 #[derive(Default, Clone, PartialEq, Eq, Hash, Debug, EnumIs)]
 pub enum BluetoothType {
@@ -46,7 +70,7 @@ impl BluetoothInfo {
     }
 }
 
-pub async fn find_bluetooth_devices() -> Result<(Vec<BluetoothDevice>, Vec<BluetoothLEDevice>)> {
+async fn find_bluetooth_devices() -> Result<(Vec<BluetoothDevice>, Vec<BluetoothLEDevice>)> {
     let bt_devices_futrue = find_btc_devices();
     let ble_devices_futrue = find_ble_devices();
 
@@ -54,7 +78,7 @@ pub async fn find_bluetooth_devices() -> Result<(Vec<BluetoothDevice>, Vec<Bluet
     Ok((bt_devices?, ble_devices?))
 }
 
-pub async fn get_bluetooth_devices_info(
+async fn get_bluetooth_devices_info(
     bt_devices: (&[BluetoothDevice], &[BluetoothLEDevice]),
 ) -> Result<DashMap<u64, BluetoothInfo>> {
     let btc_devices = bt_devices.0;

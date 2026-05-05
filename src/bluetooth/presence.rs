@@ -1,18 +1,13 @@
 use super::{
-    BT_INFO_MAP,
     ble::process_ble_device,
     btc::get_btc_info_device_frome_address,
-    info::BluetoothInfo,
+    info::{BT_INFO_MAP, BluetoothInfo, BluetoothType},
 };
-use crate::{PROXY, UserEvent, bluetooth::info::BluetoothType, notify::NotifyEvent};
+use crate::{PROXY, UserEvent, notify::NotifyEvent};
 
-use std::{
-    ops::Not,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-    },
-};
+use std::ops::Not;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use anyhow::{Context, Result, anyhow};
 use dashmap::Entry;

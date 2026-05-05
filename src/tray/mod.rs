@@ -6,7 +6,7 @@ use super::tray::{
     menu::{MenuGroup, item::create_menu, registry::MenuRegistry},
 };
 use crate::{
-    bluetooth::BT_INFO_MAP,
+    bluetooth::info::BT_INFO_MAP,
     config::{CONFIG, TrayIconStyle},
 };
 
