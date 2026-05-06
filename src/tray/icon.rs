@@ -532,7 +532,7 @@ fn check_font_exists(input: &str) -> Option<String> {
         .inspect_err(|e| error!("Failed to get {famaily_name} font path: {e}"))
         .ok()
         .and_then(|paths| paths.into_iter().next())
-        .filter(|path| Path::new(path).is_file().not())
+        .filter(|path| Path::new(path).is_file())
         .or_else(|| {
             let file_name = if input_is_font_file {
                 input.to_string()
