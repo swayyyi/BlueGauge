@@ -4,6 +4,7 @@ use crate::{
 };
 
 use std::{
+    ops::Not,
     path::{Path, PathBuf},
     sync::LazyLock,
 };
@@ -11,9 +12,17 @@ use std::{
 use ab_glyph::{Font, FontVec, Glyph, GlyphId, PxScale, point};
 use anyhow::{Context, Result, anyhow};
 use image::Rgba;
+use log::{error, info};
 use piet_common::{Color, Device, ImageFormat, LineCap, RenderContext, StrokeStyle};
 use tray_icon::Icon;
-
+use windows::{
+    Win32::Graphics::DirectWrite::{
+        DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE,
+        DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT, DWRITE_FONT_WEIGHT_NORMAL,
+        DWriteCreateFactory, IDWriteFactory, IDWriteLocalFontFileLoader,
+    },
+    core::{BOOL, HSTRING},
+};
 static FONT_ARIAL_PATH: &str = r"C:\WINDOWS\FONTS\ARIAL.TTF";
 static FONT_SEGOE_FLUENT_PATH: &str = r"C:\WINDOWS\FONTS\SEGOEICONS.TTF";
 static FONT_SEGOE_MDL2_PATH: &str = r"C:\WINDOWS\FONTS\SEGMDL2.TTF";
@@ -64,6 +73,7 @@ pub fn load_tray_icon(battery_level: u8, bluetooth_status: bool) -> Result<Icon>
             let is_status = theme.is_status().then_some(bluetooth_status);
 
             load_battery_icon(battery_level, is_low_battery, direction, is_status)
+                .map_err(|e| anyhow!("Failed to load battery icon - {e}"))
         }
         TrayIconStyle::BatteryNumber {
             address: _,
@@ -73,7 +83,8 @@ pub fn load_tray_icon(battery_level: u8, bluetooth_status: bool) -> Result<Icon>
         } => {
             let is_status = theme.is_status().then_some(bluetooth_status);
 
-            load_number_icon(battery_level, &font_name, font_color, is_status)
+            load_number_icon(battery_level, font_name.trim(), font_color, is_status)
+                .map_err(|e| anyhow!("Failed to load number icon - {e}"))
         }
         TrayIconStyle::BatteryRing {
             address: _,
@@ -90,6 +101,7 @@ pub fn load_tray_icon(battery_level: u8, bluetooth_status: bool) -> Result<Icon>
                 background_color,
                 is_status,
             )
+            .map_err(|e| anyhow!("Failed to load ring icon - {e}"))
         }
     }
 }
@@ -116,7 +128,7 @@ fn load_custom_icon(battery_level: u8) -> Result<Icon> {
 
     let icon_data = std::fs::read(custom_battery_icon_path()?)?;
 
-    load_icon(&icon_data)
+    load_icon(&icon_data).map_err(|e| anyhow!("Failed to load custom icon - {e}"))
 }
 
 fn load_battery_icon(
@@ -233,11 +245,15 @@ fn render_number_icon(
     font_color: Option</* Hex color */ String>,
     is_status: Option<bool>,
 ) -> Result<(Vec<u8>, u32, u32)> {
-    let font_path = if font_name.trim().is_empty() {
+    let font_path = if font_name.is_empty() {
+        info!("Font name is empty, using default Arial font.");
         FONT_ARIAL_PATH.to_owned()
     } else {
         check_font_exists(font_name).unwrap_or(FONT_ARIAL_PATH.to_owned())
     };
+
+    info!("Using font path: {:#?}", font_path);
+
     let font_data = std::fs::read(font_path)?;
     let font = FontVec::try_from_vec(font_data).context("Failed to parse font")?;
 
@@ -497,31 +513,130 @@ pub fn render_font(
     Ok((rgba, side, side))
 }
 
-fn check_font_exists(name: &str) -> Option<String> {
-    let file_name =
-        if Path::new(name).is_file() && (name.ends_with(".ttf") || name.ends_with(".otf")) {
-            return Some(name.to_string());
-        } else if name.ends_with(".ttf") || name.ends_with(".otf") {
-            name.to_string()
-        } else {
-            format!("{}.tff", name.trim())
-        };
-    let windir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string());
-    let fonts_dir = Path::new(&windir).join("Fonts");
-    let font_path = fonts_dir.join(&file_name);
+fn check_font_exists(input: &str) -> Option<String> {
+    let input = input.trim();
+    let input_as_path = Path::new(input);
+    let input_is_font_file = input_as_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| matches!(e, "ttf" | "otf"));
 
-    Path::new(&font_path)
-        .is_file()
-        .then_some(font_path)
+    if input_as_path.is_file() && input_is_font_file {
+        return Some(input.to_string());
+    }
+
+    let famaily_name = input_is_font_file
+        .then(|| input_as_path.file_stem().and_then(|s| s.to_str()))
+        .flatten()
+        .unwrap_or(input);
+
+    resolve_font_paths(famaily_name, None, None)
+        .inspect_err(|e| error!("Failed to get {famaily_name} font path: {e}"))
+        .ok()
+        .and_then(|paths| paths.into_iter().next())
+        .filter(|path| path.trim().is_empty().not())
         .or_else(|| {
+            let file_name = if input_is_font_file {
+                input.to_string()
+            } else {
+                format!("{input}.ttf")
+            };
+
+            std::env::var_os("WINDIR").and_then(|windir| {
+                let path = PathBuf::from(windir).join("Fonts").join(file_name);
+                path.is_file().then_some(path.to_string_lossy().to_string())
+            })
+        })
+        .or_else(|| {
+            let file_name = if input_is_font_file {
+                input.to_string()
+            } else {
+                format!("{input}.ttf")
+            };
+
             std::env::var_os("LOCALAPPDATA").and_then(|local_appdata| {
-                let font_path = PathBuf::from(local_appdata)
+                let path = PathBuf::from(local_appdata)
                     .join("Microsoft")
                     .join("Windows")
                     .join("Fonts")
                     .join(file_name);
-                font_path.is_file().then_some(font_path)
+                path.is_file().then_some(path.to_string_lossy().to_string())
             })
         })
-        .map(|p| p.to_string_lossy().to_string())
+}
+
+fn resolve_font_paths(
+    family_name: &str,
+    weight: Option<DWRITE_FONT_WEIGHT>,
+    style: Option<DWRITE_FONT_STYLE>,
+) -> Result<Vec<String>> {
+    unsafe {
+        use windows::core::Interface;
+        let factory = DWriteCreateFactory::<IDWriteFactory>(DWRITE_FACTORY_TYPE_SHARED)?;
+        let mut font_collection = None;
+        factory.GetSystemFontCollection(&mut font_collection, false)?;
+
+        let Some(font_collection) = font_collection else {
+            return Ok(vec![]);
+        };
+
+        let mut index = 0;
+        let mut exists = BOOL::default();
+        font_collection.FindFamilyName(&HSTRING::from(family_name), &mut index, &mut exists)?;
+
+        if !exists.as_bool() {
+            return Ok(vec![]);
+        }
+
+        let font_family = font_collection.GetFontFamily(index)?;
+
+        let font = font_family.GetFirstMatchingFont(
+            weight.unwrap_or(DWRITE_FONT_WEIGHT_NORMAL),
+            DWRITE_FONT_STRETCH_NORMAL,
+            style.unwrap_or(DWRITE_FONT_STYLE_NORMAL),
+        )?;
+
+        let font_face = font.CreateFontFace()?;
+
+        let mut file_count = 0;
+        font_face.GetFiles(&mut file_count, None)?;
+
+        if file_count == 0 {
+            return Ok(vec![]);
+        }
+
+        let mut font_files = vec![None; file_count as usize];
+        font_face.GetFiles(&mut file_count, Some(font_files.as_mut_ptr()))?;
+
+        let mut result = Vec::new();
+        for file in font_files.iter().flatten() {
+            let loader = file.GetLoader()?;
+            let Ok(local_loader) = loader.cast::<IDWriteLocalFontFileLoader>() else {
+                continue;
+            };
+            let mut key: *mut std::ffi::c_void = std::ptr::null_mut();
+            let mut key_size = 0;
+
+            file.GetReferenceKey(&mut key, &mut key_size)?;
+
+            let mut font_file_path_length = local_loader.GetFilePathLengthFromKey(key, key_size)?;
+
+            // returned length does not include NULL-terminator
+            // (https://learn.microsoft.com/en-us/windows/win32/api/dwrite/nf-dwrite-idwritelocalfontfileloader-getfilepathlengthfromkey)
+            font_file_path_length += 1;
+
+            let mut font_file_path_buffer = vec![0u16; font_file_path_length as usize];
+
+            local_loader.GetFilePathFromKey(key, key_size, &mut font_file_path_buffer)?;
+
+            font_file_path_buffer.set_len(font_file_path_length as usize);
+
+            // remove null terminator !!!
+            let path = String::from_utf16_lossy(&font_file_path_buffer).replace('\0', "");
+
+            result.push(path);
+        }
+
+        Ok(result)
+    }
 }
