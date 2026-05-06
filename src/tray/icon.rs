@@ -252,8 +252,6 @@ fn render_number_icon(
         check_font_exists(font_name).unwrap_or(FONT_ARIAL_PATH.to_owned())
     };
 
-    info!("Using font path: {:#?}", font_path);
-
     let font_data = std::fs::read(font_path)?;
     let font = FontVec::try_from_vec(font_data).context("Failed to parse font")?;
 
@@ -534,7 +532,7 @@ fn check_font_exists(input: &str) -> Option<String> {
         .inspect_err(|e| error!("Failed to get {famaily_name} font path: {e}"))
         .ok()
         .and_then(|paths| paths.into_iter().next())
-        .filter(|path| path.trim().is_empty().not())
+        .filter(|path| Path::new(path).is_file().not())
         .or_else(|| {
             let file_name = if input_is_font_file {
                 input.to_string()
@@ -632,7 +630,10 @@ fn resolve_font_paths(
             font_file_path_buffer.set_len(font_file_path_length as usize);
 
             // remove null terminator !!!
-            let path = String::from_utf16_lossy(&font_file_path_buffer).replace('\0', "");
+            let path = String::from_utf16_lossy(&font_file_path_buffer)
+                .trim_end_matches('\0')
+                .trim()
+                .to_string();
 
             result.push(path);
         }
