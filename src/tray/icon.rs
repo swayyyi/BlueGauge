@@ -4,7 +4,6 @@ use crate::{
 };
 
 use std::{
-    ops::Not,
     path::{Path, PathBuf},
     sync::LazyLock,
 };
@@ -21,7 +20,7 @@ use windows::{
         DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT, DWRITE_FONT_WEIGHT_NORMAL,
         DWriteCreateFactory, IDWriteFactory, IDWriteLocalFontFileLoader,
     },
-    core::{BOOL, HSTRING},
+    core::{BOOL, HSTRING, Interface},
 };
 static FONT_ARIAL_PATH: &str = r"C:\WINDOWS\FONTS\ARIAL.TTF";
 static FONT_SEGOE_FLUENT_PATH: &str = r"C:\WINDOWS\FONTS\SEGOEICONS.TTF";
@@ -569,7 +568,6 @@ fn resolve_font_paths(
     style: Option<DWRITE_FONT_STYLE>,
 ) -> Result<Vec<String>> {
     unsafe {
-        use windows::core::Interface;
         let factory = DWriteCreateFactory::<IDWriteFactory>(DWRITE_FACTORY_TYPE_SHARED)?;
         let mut font_collection = None;
         factory.GetSystemFontCollection(&mut font_collection, false)?;
