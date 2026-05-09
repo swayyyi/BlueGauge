@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+use std::rc::Rc;
 
 use getset::Getters;
 use tray_icon::menu::{CheckMenuItem, MenuId, MenuItemKind};
@@ -23,7 +24,7 @@ where
 #[derive(Clone, Getters)]
 #[getset(get = "pub")]
 struct RadioGroup {
-    members: HashSet<MenuId>,
+    members: HashSet<Rc<MenuId>>,
     default: Option<MenuId>,
 }
 
@@ -32,9 +33,9 @@ pub struct MenuRegistry<G>
 where
     G: Clone + Copy + Eq + Hash + PartialEq,
 {
-    items: HashMap<MenuId, MenuItemMeta<G>>,
+    items: HashMap<Rc<MenuId>, MenuItemMeta<G>>,
     radio_groups: HashMap<G, RadioGroup>,
-    checkbox_groups: HashMap<G, HashSet<MenuId>>,
+    checkbox_groups: HashMap<G, HashSet<Rc<MenuId>>>,
 }
 
 #[allow(dead_code)]
@@ -51,13 +52,16 @@ where
     }
 
     pub fn register_normal(&mut self, id: MenuId, kind: MenuItemKind) {
-        self.items.insert(id, MenuItemMeta { kind, group: None });
+        self.items
+            .insert(Rc::new(id), MenuItemMeta { kind, group: None });
     }
 
     pub fn register_checkbox(&mut self, id: MenuId, kind: MenuItemKind, group: G) -> bool {
         if kind.as_check_menuitem().is_none() {
             return false;
         }
+
+        let id = Rc::new(id);
 
         self.items.insert(
             id.clone(),
@@ -82,6 +86,8 @@ where
         if kind.as_check_menuitem().is_none() {
             return false;
         }
+
+        let id = Rc::new(id);
 
         self.items.insert(
             id.clone(),
@@ -152,7 +158,7 @@ where
                         .ok_or(format!("Failed to get radio id from {id:?}"))
                         .map(|ids| {
                             ids.iter()
-                                .filter(|menu_id| menu_id.ne(&id))
+                                .filter(|menu_id| menu_id.as_ref().ne(&id))
                                 .filter_map(|id| self.items.get(id))
                                 .filter_map(|meta| meta.kind.as_check_menuitem())
                                 .for_each(|check_menu| {
@@ -187,7 +193,7 @@ where
                             .ok_or(format!("Failed to get radio id from {id:?}"))
                             .map(|ids| {
                                 ids.iter()
-                                    .filter(|menu_id| menu_id.ne(&default_menu_id))
+                                    .filter(|menu_id| menu_id.as_ref().ne(&default_menu_id))
                                     .filter_map(|id| self.items.get(id))
                                     .filter_map(|meta| meta.kind.as_check_menuitem())
                                     .for_each(|check_menu| {
@@ -225,7 +231,7 @@ where
         self.items.get(id).and_then(|meta| meta.group)
     }
 
-    pub fn get_checkbox_id_from_group(&self, group: G) -> Option<&HashSet<MenuId>> {
+    pub fn get_checkbox_id_from_group(&self, group: G) -> Option<&HashSet<Rc<MenuId>>> {
         self.checkbox_groups.get(&group)
     }
 
@@ -238,7 +244,7 @@ where
         })
     }
 
-    pub fn get_radio_id_from_group(&self, group: G) -> Option<&HashSet<MenuId>> {
+    pub fn get_radio_id_from_group(&self, group: G) -> Option<&HashSet<Rc<MenuId>>> {
         self.radio_groups.get(&group).map(|r| r.members())
     }
 
