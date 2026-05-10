@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+use std::ops::Not;
 use std::rc::Rc;
 
 use getset::Getters;
@@ -31,7 +32,7 @@ struct RadioGroup {
 #[derive(Clone)]
 pub struct MenuRegistry<G>
 where
-    G: Clone + Copy + Eq + Hash + PartialEq,
+    G: Clone + Copy + Eq + Hash + PartialEq + std::fmt::Debug,
 {
     items: HashMap<Rc<MenuId>, MenuItemMeta<G>>,
     radio_groups: HashMap<G, RadioGroup>,
@@ -41,7 +42,7 @@ where
 #[allow(dead_code)]
 impl<G> MenuRegistry<G>
 where
-    G: Clone + Copy + Eq + Hash + PartialEq,
+    G: Clone + Copy + Eq + Hash + PartialEq + std::fmt::Debug,
 {
     pub fn new() -> Self {
         Self {
@@ -51,17 +52,17 @@ where
         }
     }
 
-    pub fn register_normal(&mut self, id: MenuId, kind: MenuItemKind) {
-        self.items
-            .insert(Rc::new(id), MenuItemMeta { kind, group: None });
+    pub fn register_normal(&mut self, kind: MenuItemKind) {
+        let id = Rc::new(kind.id().clone());
+        self.items.insert(id, MenuItemMeta { kind, group: None });
     }
 
-    pub fn register_checkbox(&mut self, id: MenuId, kind: MenuItemKind, group: G) -> bool {
+    pub fn register_checkbox(&mut self, kind: MenuItemKind, group: G) -> bool {
         if kind.as_check_menuitem().is_none() {
             return false;
         }
 
-        let id = Rc::new(id);
+        let id = Rc::new(kind.id().clone());
 
         self.items.insert(
             id.clone(),
@@ -78,7 +79,6 @@ where
 
     pub fn register_radio(
         &mut self,
-        id: MenuId,
         kind: MenuItemKind,
         group: G,
         default: Option<MenuId>,
@@ -87,7 +87,7 @@ where
             return false;
         }
 
-        let id = Rc::new(id);
+        let id = Rc::new(kind.id().clone());
 
         self.items.insert(
             id.clone(),
@@ -135,88 +135,81 @@ where
         let menu_item_meta = self
             .items
             .get(id)
-            .ok_or(format!("Menu item not found: {id:?}"))?;
+            .ok_or_else(|| format!("The menu not found: {id:?}"))?;
 
-        let menu_group = menu_item_meta.group;
+        let menu_group = menu_item_meta.group();
 
-        let menu_kind = &menu_item_meta.kind;
+        let menu_kind = &menu_item_meta.kind();
 
-        if let Some(menu_group) = menu_group {
-            // 处理单选框组
-            if let Some(radio_group) = self.radio_groups.get(&menu_group) {
-                let Some(click_menu) = menu_kind.as_check_menuitem() else {
-                    return Err(format!(
-                        "Clicked menu is not a CheckMenu on a radio group: {id:?}"
-                    ));
-                };
+        // Clicked menu is not in any group, return directly
+        let Some(menu_group) = menu_group else {
+            return Ok(menu_item_meta);
+        };
 
-                let click_menu_state = click_menu.is_checked();
-
-                if click_menu_state {
-                    // 点击菜单选中，其余菜单取消选中
-                    self.get_radio_id_from_group(menu_group)
-                        .ok_or(format!("Failed to get radio id from {id:?}"))
-                        .map(|ids| {
-                            ids.iter()
-                                .filter(|menu_id| menu_id.as_ref().ne(&id))
-                                .filter_map(|id| self.items.get(id))
-                                .filter_map(|meta| meta.kind.as_check_menuitem())
-                                .for_each(|check_menu| {
-                                    check_menu.set_checked(false);
-                                });
-                        })?;
-
-                    return Ok(menu_item_meta);
-                } else {
-                    // 点击的菜单未选中时
-                    let Some(default_menu_id) = radio_group.default.as_ref() else {
-                        // 无默认菜单时返回，全部菜单取消选中
-                        self.get_radio_menu_from_group(menu_group)
-                            .ok_or(format!("Failed to get radio id from {id:?}"))
-                            .map(|ids| {
-                                ids.iter().for_each(|check_menu| {
-                                    check_menu.set_checked(false);
-                                });
-                            })?;
-                        return Ok(menu_item_meta);
-                    };
-                    let default_menu_meta = self.items.get(default_menu_id);
-
-                    let Some(default_menu_meta) = default_menu_meta else {
-                        return Err(format!("Default menu item not found: {default_menu_id:?}"));
-                    };
-
-                    if let Some(default_menu) = default_menu_meta.kind.as_check_menuitem() {
-                        // 默认菜单选中，其余菜单取消选中
-                        default_menu.set_checked(true);
-                        self.get_radio_id_from_group(menu_group)
-                            .ok_or(format!("Failed to get radio id from {id:?}"))
-                            .map(|ids| {
-                                ids.iter()
-                                    .filter(|menu_id| menu_id.as_ref().ne(&default_menu_id))
-                                    .filter_map(|id| self.items.get(id))
-                                    .filter_map(|meta| meta.kind.as_check_menuitem())
-                                    .for_each(|check_menu| {
-                                        check_menu.set_checked(false);
-                                    });
-                            })?;
-                        return Ok(default_menu_meta);
-                    } else {
-                        return Err(format!(
-                            "Default menu item is not a CheckMenu: {default_menu_id:?}"
-                        ));
-                    }
-                };
+        // Clicked menu is not in any [Radio] group, return directly
+        let Some(radio_group) = self.radio_groups.get(menu_group) else {
+            if self.checkbox_groups.contains_key(menu_group)
+                && menu_kind.as_check_menuitem().is_some().not()
+            {
+                return Err(format!(
+                    "Menu({id:?}) is not a [CheckMenuItem] on the checkbox group({menu_group:?})"
+                ));
             }
 
-            // 处理复选框组
-            self.checkbox_groups
-                .contains_key(&menu_group)
-                .then_some(())
-                .ok_or(format!("Menu item not found in checkbox group: {id:?}"))?;
-        }
+            return Ok(menu_item_meta);
+        };
 
-        Ok(menu_item_meta)
+        // <---Handle [Radio] menu--->
+        let radio_menus_id = radio_group.members();
+
+        let clickd_radio_menu_is_checked = menu_kind
+            .as_check_menuitem()
+            .ok_or_else(|| {
+                format!("Menu({id:?}) is not a [CheckMenuItem] on the radio group({menu_group:?})")
+            })?
+            .is_checked();
+
+        // Clicked menu is selected, deselect other raodio menus
+        if clickd_radio_menu_is_checked {
+            radio_menus_id
+                .iter()
+                .filter(|menu_id| menu_id.as_ref().ne(&id))
+                .filter_map(|id| self.items.get(id))
+                .filter_map(|menu_meta| menu_meta.kind().as_check_menuitem())
+                .for_each(|check_menu| check_menu.set_checked(false));
+
+            Ok(menu_item_meta)
+        // Clicked menu is not selected, check if there is a default menu in the group
+        } else {
+            let Some(default_menu_id) = radio_group.default().as_ref() else {
+                // No default menu, return and uncheck all menus
+                self.get_radio_menu_from_group(menu_group)
+                    .ok_or_else(|| format!("Failed to get radio menus from {menu_group:?}"))?
+                    .iter()
+                    .for_each(|check_menu| check_menu.set_checked(false));
+
+                return Ok(menu_item_meta);
+            };
+
+            let default_menu_meta = self
+                .items
+                .get(default_menu_id)
+                .ok_or_else(|| format!("Default menu({default_menu_id:?}) meta not found"))?;
+
+            let default_menu_item = default_menu_meta.kind().as_check_menuitem()
+                .ok_or_else(|| format!("Default Menu({default_menu_id:?}) is not a [CheckMenuItem] on the radio group({menu_group:?})"))?;
+
+            // Uncheck all other menus except the default menu
+            default_menu_item.set_checked(true);
+            radio_menus_id
+                .iter()
+                .filter(|menu_id| menu_id.as_ref().ne(&default_menu_id))
+                .filter_map(|id| self.items.get(id))
+                .filter_map(|menu_meta| menu_meta.kind().as_check_menuitem())
+                .for_each(|check_menu| check_menu.set_checked(false));
+
+            Ok(default_menu_meta)
+        }
     }
 
     pub fn get_menu_meta_from_id(&self, id: &MenuId) -> Option<&MenuItemMeta<G>> {
@@ -244,11 +237,11 @@ where
         })
     }
 
-    pub fn get_radio_id_from_group(&self, group: G) -> Option<&HashSet<Rc<MenuId>>> {
-        self.radio_groups.get(&group).map(|r| r.members())
+    pub fn get_radio_id_from_group(&self, group: &G) -> Option<&HashSet<Rc<MenuId>>> {
+        self.radio_groups.get(group).map(|r| r.members())
     }
 
-    pub fn get_radio_menu_from_group(&self, group: G) -> Option<Vec<&CheckMenuItem>> {
+    pub fn get_radio_menu_from_group(&self, group: &G) -> Option<Vec<&CheckMenuItem>> {
         self.get_radio_id_from_group(group).map(|ids| {
             ids.iter()
                 .filter_map(|id| self.items.get(id))

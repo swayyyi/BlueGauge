@@ -78,29 +78,25 @@ impl CreateMenuItem {
 
     fn quit(&mut self, text: &str) -> MenuItem {
         let menu_item = MenuItem::with_id(MenuAction::Quit.id(), text, true, None);
-        self.0
-            .register_normal(menu_item.id().clone(), menu_item.kind());
+        self.0.register_normal(menu_item.kind());
         menu_item
     }
 
     fn about(&mut self, text: &str) -> MenuItem {
         let menu_item = MenuItem::with_id(MenuAction::About.id(), text, true, None);
-        self.0
-            .register_normal(menu_item.id().clone(), menu_item.kind());
+        self.0.register_normal(menu_item.kind());
         menu_item
     }
 
     fn restart(&mut self, text: &str) -> MenuItem {
         let menu_item = MenuItem::with_id(MenuAction::Restart.id(), text, true, None);
-        self.0
-            .register_normal(menu_item.id().clone(), menu_item.kind());
+        self.0.register_normal(menu_item.kind());
         menu_item
     }
 
     fn open_config(&mut self, text: &str) -> MenuItem {
         let menu_item = MenuItem::with_id(MenuAction::OpenConfig.id(), text, true, None);
-        self.0
-            .register_normal(menu_item.id().clone(), menu_item.kind());
+        self.0.register_normal(menu_item.kind());
         menu_item
     }
 
@@ -108,15 +104,13 @@ impl CreateMenuItem {
         let should_startup = get_startup_status()?;
         let check_menu_item =
             CheckMenuItem::with_id(MenuAction::Startup.id(), text, true, should_startup, None);
-        self.0
-            .register_normal(check_menu_item.id().clone(), check_menu_item.kind());
+        self.0.register_normal(check_menu_item.kind());
         Ok(check_menu_item)
     }
 
     fn refresh(&mut self, text: &str) -> MenuItem {
         let menu_item = MenuItem::with_id(MenuAction::Refresh.id(), text, true, None);
-        self.0
-            .register_normal(menu_item.id().clone(), menu_item.kind());
+        self.0.register_normal(menu_item.kind());
         menu_item
     }
 
@@ -153,14 +147,14 @@ impl CreateMenuItem {
                     info.battery
                 );
                 let menu = CheckMenuItem::with_id(
-                    menu_id.clone(),
+                    menu_id,
                     text,
                     true,
                     show_tray_battery_icon_bt_address.is_some_and(|addr| addr.eq(&info.address)),
                     None,
                 );
                 self.0
-                    .register_radio(menu_id, menu.kind(), MenuGroup::RadioDevice, None);
+                    .register_radio(menu.kind(), MenuGroup::RadioDevice, None);
                 menu
             })
             .collect::<Vec<CheckMenuItem>>()
@@ -218,9 +212,8 @@ impl CreateMenuItem {
         ]
         .into_iter()
         .for_each(|(menu_id, text, checked)| {
-            let menu = CheckMenuItem::with_id(menu_id.clone(), text, true, checked, None);
+            let menu = CheckMenuItem::with_id(menu_id, text, true, checked, None);
             self.0.register_radio(
-                menu_id,
                 menu.kind(),
                 MenuGroup::RadioTrayIconStyle,
                 Some(MenuAction::TrayIconStyleNumber.id()),
@@ -258,9 +251,9 @@ impl CreateMenuItem {
         ]
         .into_iter()
         .for_each(|(menu_id, text, checked)| {
-            let menu = CheckMenuItem::with_id(menu_id.clone(), text, true, checked, None);
+            let menu = CheckMenuItem::with_id(menu_id, text, true, checked, None);
             self.0
-                .register_checkbox(menu_id, menu.kind(), MenuGroup::CheckBoxTrayTooltip);
+                .register_checkbox(menu.kind(), MenuGroup::CheckBoxTrayTooltip);
             menus.push(menu);
         });
 
@@ -285,7 +278,7 @@ impl CreateMenuItem {
             let dafault_menu_id = MenuId::from(low_battery);
             let battery = menu_id.as_ref().parse::<u8>().unwrap();
             let menu = CheckMenuItem::with_id(
-                menu_id.clone(),
+                menu_id,
                 if battery.eq(&0) {
                     LOC.never.to_string()
                 } else {
@@ -297,7 +290,6 @@ impl CreateMenuItem {
             );
 
             self.0.register_radio(
-                menu_id,
                 menu.kind(),
                 MenuGroup::RadioLowBattery,
                 Some(dafault_menu_id),
@@ -340,9 +332,9 @@ impl CreateMenuItem {
         ]
         .into_iter()
         .for_each(|(menu_id, text, checked)| {
-            let menu = CheckMenuItem::with_id(menu_id.clone(), text, true, checked, None);
+            let menu = CheckMenuItem::with_id(menu_id, text, true, checked, None);
             self.0
-                .register_checkbox(menu_id, menu.kind(), MenuGroup::CheckBoxNotify);
+                .register_checkbox(menu.kind(), MenuGroup::CheckBoxNotify);
             menus.push(menu);
         });
 
@@ -359,15 +351,10 @@ impl CreateMenuItem {
             _ => (false, false),
         };
 
-        let menu = CheckMenuItem::with_id(
-            menu_id.clone(),
-            LOC.set_icon_connect_color,
-            enabled,
-            checked,
-            None,
-        );
+        let menu =
+            CheckMenuItem::with_id(menu_id, LOC.set_icon_connect_color, enabled, checked, None);
 
-        self.0.register_normal(menu_id, menu.kind());
+        self.0.register_normal(menu.kind());
 
         menu
     }
@@ -385,8 +372,7 @@ impl CreateMenuItem {
             None,
         );
 
-        self.0
-            .register_normal(MenuAction::ShowLowestBatteryDevice.id(), menu.kind());
+        self.0.register_normal(menu.kind());
 
         menu
     }

@@ -12,9 +12,9 @@ use tray_icon::menu::MenuItemKind;
 
 // 处理菜单事件
 pub fn handle_menu_event(return_menu_meta: &MenuItemMeta<MenuGroup>) -> Result<()> {
-    let return_menu_kind = &return_menu_meta.kind();
-    let return_menu_id = return_menu_kind.id();
     let return_menu_group = return_menu_meta.group();
+    let return_menu_kind = return_menu_meta.kind();
+    let return_menu_id = return_menu_kind.id();
 
     let menu_action = match MenuAction::from_str(return_menu_id.as_ref()) {
         Ok(m) => m,

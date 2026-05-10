@@ -37,6 +37,7 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
+use anyhow::anyhow;
 use log::{error, info};
 use tray_icon::{TrayIcon, menu::MenuEvent};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -87,7 +88,7 @@ struct App {
     exit_threads: Arc<AtomicBool>,
     /// 存储已经通知过的低电量设备（地址），避免再次通知
     notified_devices: Arc<Mutex<HashSet</* Address */ u64>>>,
-    menu_registry: Mutex<MenuRegistry<MenuGroup>>,
+    menu_registry: MenuRegistry<MenuGroup>,
     system_theme: Arc<RwLock<SystemTheme>>,
     theme_watcher: Option<ThemeWatcher>,
     tray: Mutex<TrayIcon>,
@@ -109,7 +110,7 @@ impl App {
             bluetooth_watcher: None,
             exit_threads: Arc::new(AtomicBool::new(false)),
             notified_devices: Arc::new(Mutex::new(HashSet::new())),
-            menu_registry: Mutex::new(menu_registry),
+            menu_registry,
             system_theme: Arc::new(RwLock::new(SystemTheme::get())),
             theme_watcher: None,
             tray: Mutex::new(tray),
@@ -228,9 +229,7 @@ impl ApplicationHandler<UserEvent> for App {
             UserEvent::UnCheckDeviceMenu => {
                 if let Some(radio_group) = self
                     .menu_registry
-                    .lock()
-                    .unwrap()
-                    .get_radio_menu_from_group(MenuGroup::RadioDevice)
+                    .get_radio_menu_from_group(&MenuGroup::RadioDevice)
                 {
                     radio_group.iter().for_each(|m| m.set_checked(false));
                 }
@@ -239,8 +238,6 @@ impl ApplicationHandler<UserEvent> for App {
             UserEvent::UnCheckAboutIconMenu => {
                 if let Some(menu_control) = self
                     .menu_registry
-                    .lock()
-                    .unwrap()
                     .get_menu_kind_from_id(&MenuAction::ShowLowestBatteryDevice.id())
                     .and_then(|menu_kind| menu_kind.as_check_menuitem())
                 {
@@ -249,8 +246,6 @@ impl ApplicationHandler<UserEvent> for App {
 
                 if let Some(menu_control) = self
                     .menu_registry
-                    .lock()
-                    .unwrap()
                     .get_menu_kind_from_id(&MenuAction::SetIconConnectColor.id())
                     .and_then(|menu_kind| menu_kind.as_check_menuitem())
                 {
@@ -262,19 +257,13 @@ impl ApplicationHandler<UserEvent> for App {
                 event_loop.exit();
             }
             UserEvent::MenuEvent(event) => {
-                let click_menu_id = event.id();
-
-                let mut menu_registry = self.menu_registry.lock().unwrap();
-
-                match menu_registry.handle_event(click_menu_id) {
-                    Ok(return_menu_meta) => {
-                        if let Err(e) = handle_menu_event(return_menu_meta) {
-                            error!("Failed to handle menu event: {e}")
-                        }
-                    }
-                    Err(err) => {
-                        error!("Failed to handle menu event: {err}");
-                    }
+                if let Err(e) = self
+                    .menu_registry
+                    .handle_event(event.id())
+                    .map_err(|e| anyhow!("{e}"))
+                    .and_then(handle_menu_event)
+                {
+                    error!("Failed to handle menu event: {e}");
                 }
             }
             UserEvent::Notify(notify_event) => notify_event.send(self.notified_devices.clone()),
@@ -318,8 +307,7 @@ impl ApplicationHandler<UserEvent> for App {
                     .store(false, Ordering::Relaxed);
 
                 let tray_menu = {
-                    let mut menu_registry = self.menu_registry.lock().unwrap();
-                    match create_menu(&mut menu_registry) {
+                    match create_menu(&mut self.menu_registry) {
                         Ok(tray_menu) => tray_menu,
                         Err(e) => {
                             notify(format!("Failed to create tray menu - {e}"));
