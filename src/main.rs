@@ -91,7 +91,7 @@ struct App {
     menu_registry: MenuRegistry<MenuGroup>,
     system_theme: Arc<RwLock<SystemTheme>>,
     theme_watcher: Option<ThemeWatcher>,
-    tray: Mutex<TrayIcon>,
+    tray: TrayIcon,
     /// 托盘菜单更新轮询标志，避免在菜单打开时强制刷新导致体验不佳
     tray_menu_update_polling: Arc<AtomicBool>,
 }
@@ -113,7 +113,7 @@ impl App {
             menu_registry,
             system_theme: Arc::new(RwLock::new(SystemTheme::get())),
             theme_watcher: None,
-            tray: Mutex::new(tray),
+            tray,
             tray_menu_update_polling: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -274,19 +274,13 @@ impl ApplicationHandler<UserEvent> for App {
                     return;
                 };
 
-                let _ = self.tray.lock().unwrap().set_icon(Some(icon));
+                let _ = self.tray.set_icon(Some(icon));
             }
             UserEvent::UpdateTrayMenu => {
                 pump_messages();
 
                 // 如果托盘菜单正在显示，则推迟更新，避免菜单被强制关闭刷新影响体验
-                if self
-                    .tray
-                    .lock()
-                    .unwrap()
-                    .is_menu_showing()
-                    .unwrap_or_default()
-                {
+                if self.tray.is_menu_showing().unwrap_or_default() {
                     info!("Tray menu is showing, deferring update");
 
                     if !self.tray_menu_update_polling.swap(true, Ordering::Relaxed) {
@@ -316,18 +310,11 @@ impl ApplicationHandler<UserEvent> for App {
                     }
                 };
 
-                self.tray
-                    .lock()
-                    .unwrap()
-                    .set_menu(Some(Box::new(tray_menu)));
+                self.tray.set_menu(Some(Box::new(tray_menu)));
             }
             UserEvent::UpdateTrayTooltip => {
                 let bluetooth_tooltip_info = convert_tray_info();
-                let _ = self
-                    .tray
-                    .lock()
-                    .unwrap()
-                    .set_tooltip(Some(bluetooth_tooltip_info));
+                let _ = self.tray.set_tooltip(Some(bluetooth_tooltip_info));
             }
             UserEvent::UpdateTray => {
                 // 不创建 UserEvent::ShowLowestBatteryDevice 事件，是因为 .send_event 是非阻塞的的
@@ -366,7 +353,7 @@ impl ApplicationHandler<UserEvent> for App {
                 let _ = PROXY.get().unwrap().send_event(UserEvent::Exit);
             }
             UserEvent::ShowAboutDialog => {
-                let hwnd = self.tray.lock().unwrap().window_handle();
+                let hwnd = self.tray.window_handle();
                 about::show_about_dialog(hwnd as isize);
             }
         }
