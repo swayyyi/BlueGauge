@@ -92,6 +92,7 @@ pub async fn process_ble_device(ble_device: &BluetoothLEDevice) -> Result<Blueto
     Ok(BluetoothInfo {
         name,
         battery,
+        battery_display: None,
         status,
         address,
         r#type: BluetoothType::LowEnergy,

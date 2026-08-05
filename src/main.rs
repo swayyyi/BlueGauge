@@ -280,23 +280,6 @@ impl ApplicationHandler<UserEvent> for App {
                 pump_messages();
 
                 // 如果托盘菜单正在显示，则推迟更新，避免菜单被强制关闭刷新影响体验
-                if self.tray.is_menu_showing().unwrap_or_default() {
-                    info!("Tray menu is showing, deferring update");
-
-                    if !self.tray_menu_update_polling.swap(true, Ordering::Relaxed) {
-                        let tray_menu_update_polling = self.tray_menu_update_polling.clone();
-                        std::thread::spawn(move || {
-                            let proxy = PROXY.get().unwrap();
-                            while tray_menu_update_polling.load(Ordering::Relaxed) {
-                                std::thread::sleep(std::time::Duration::from_millis(400));
-                                let _ = proxy.send_event(UserEvent::UpdateTrayMenu);
-                            }
-                        });
-                    }
-
-                    return;
-                }
-
                 self.tray_menu_update_polling
                     .store(false, Ordering::Relaxed);
 

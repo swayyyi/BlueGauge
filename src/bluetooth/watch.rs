@@ -1,4 +1,6 @@
 use super::{
+    airpods::watch_airpods_async,
+    asus_mouse::watch_asus_mouse_async,
     ble::watch_ble_devices_async,
     btc::{watch_btc_devices_battery, watch_btc_devices_status_async},
     presence::watch_bt_presence_async,
@@ -18,12 +20,18 @@ macro_rules! spawn_watch {
         let exit_flag = Arc::clone(&$exit_flag);
         let restart_flag = Arc::clone(&$restart_flag);
 
-        tokio::spawn(async move { $func(&exit_flag, &restart_flag).await })
+        tokio::spawn(async move {
+            let result = $func(&exit_flag, &restart_flag).await;
+            if let Err(error) = &result {
+                log::error!("Bluetooth watcher failed: {error:#}");
+            }
+            result
+        })
     }};
 }
 
 pub struct Watcher {
-    watch_handles: Option<[WatchHandle; 4]>,
+    watch_handles: Option<[WatchHandle; 6]>,
     exit_flag: Arc<AtomicBool>,
     restart_flag: Arc<AtomicUsize>,
 }
@@ -57,19 +65,23 @@ impl Watcher {
     }
 
     #[rustfmt::skip]
-    fn watch_loop(&self) -> [WatchHandle; 4] {
+    fn watch_loop(&self) -> [WatchHandle; 6] {
         info!("The watch bluetooth thread is started.");
 
         let watch_ble_handle = spawn_watch!(watch_ble_devices_async, self.exit_flag, self.restart_flag);
         let watch_btc_battery_handle = spawn_watch!(watch_btc_devices_battery, self.exit_flag, self.restart_flag);
         let watch_btc_status_handle = spawn_watch!(watch_btc_devices_status_async, self.exit_flag, self.restart_flag);
         let watch_bt_presence_handle = spawn_watch!(watch_bt_presence_async, self.exit_flag, self.restart_flag);
+        let watch_airpods_handle = spawn_watch!(watch_airpods_async, self.exit_flag, self.restart_flag);
+        let watch_asus_mouse_handle = spawn_watch!(watch_asus_mouse_async, self.exit_flag, self.restart_flag);
 
         [
             watch_ble_handle,
             watch_btc_battery_handle,
             watch_btc_status_handle,
             watch_bt_presence_handle,
+            watch_airpods_handle,
+            watch_asus_mouse_handle,
         ]
     }
 }

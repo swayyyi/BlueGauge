@@ -92,6 +92,7 @@ async fn check_presence_async(
                     let device = BluetoothDevice::FromIdAsync(&id)?.await?;
                     device.BluetoothAddress()?
                 }
+                BluetoothType::AsusHid { .. } => return Ok(()),
             };
             let remove_device_info = BluetoothInfo {
                 address: remove_device_address,

@@ -1,191 +1,104 @@
 # BlueGauge
 
-A lightweight tray tool for easily viewing the battery level of your Bluetooth devices.
+BlueGauge 是一个轻量的 Windows 托盘电量工具。它常驻在右下角通知区域，鼠标悬停到托盘图标上，就能看到已连接设备的剩余电量。
 
-一款轻便的托盘工具，可轻松查看蓝牙设备的电池电量。
+这个版本在原项目基础上增加了更强的设备兼容能力，重点补上了正版 AirPods Pro 和 ASUS ROG 2.4GHz 无线鼠标的电量读取。
 
-<p align="center">
-	<a href="https://github.com/iKineticate/BlueGauge/releases/latest"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/iKineticate/BlueGauge?"></a>
-	<a href="https://github.com/iKineticate/BlueGauge/releases/latest"><img alt="Github Downloads" src="https://img.shields.io/github/downloads/iKineticate/BlueGauge/total?logo=github"></a>
-    <a href="https://wwxv.lanzoul.com/b009hchxrc"><img alt="Static Badge" src="https://img.shields.io/badge/蓝奏云-2K%2B-blue?logo=icloud"></a>
-    <img alt="Language" src="https://img.shields.io/badge/build-Rust-yellow?logo=rust">
-    <a href="https://github.com/iKineticate/BlueGauge#"><img alt="GitHub License" src="https://img.shields.io/github/license/iKineticate/BlueGauge"></a>
-</p>
+## 当前增强
 
-<div align="center">
-  <img src="screenshots/app.png" alt="App Screenshot" style="width: 100%; max-width: 100%; height: auto; display: block;" />
-</div>
+- 支持常规蓝牙设备电量显示。
+- 支持 AirPods 专用解析，可读取 Apple BLE 广播里的左右耳与充电盒电量。
+- 支持正版 AirPods Pro，已验证型号 `0x200E`。
+- 支持 ASUS ROG Strix Impact II Wireless 2.4GHz 鼠标，设备 ID 为 `VID_0B05&PID_1949`。
+- 托盘悬停提示支持多电量展示，例如 AirPods 左耳、右耳、充电盒分别显示。
+- 支持低电量通知、断开/重连通知、设备别名、托盘图标样式设置。
 
-<h3 align="center"> 简体中文 | <a href='./README-en.md'>English</a></h3>
+## 已验证设备
 
-## 功能
+| 设备 | 连接方式 | 显示方式 | 说明 |
+| --- | --- | --- | --- |
+| AirPods Pro | 蓝牙 + Apple BLE 广播 | 左耳、右耳、充电盒 | 充电盒电量需要盒子广播时才会更新 |
+| ROG Strix Impact II Wireless | 2.4GHz USB 接收器 | 鼠标电量 | 该型号只上报 25% 档位 |
+| 常规蓝牙耳机、键盘、鼠标 | 蓝牙 | 单一百分比 | 取决于设备是否向 Windows 暴露电量 |
 
-1. 设置：蓝牙设备电量作为托盘图标  
+## ASUS ROG 鼠标说明
 
-<details>
-<summary>使用数字图标（默认）</summary>
+2.4GHz 无线鼠标通常不是蓝牙设备，Windows 标准蓝牙电量接口读不到它们。
 
-1. 勾选需显示电量设备    
-2. 可选设置相关参数，打开托盘菜单 - `设置` - `打开配置`  
-`font_name` = `"系统字体名称，如 Microsoft YaHei UI"`（默认 `Arial`）  
-`font_color` = `"十六进制颜色代码，如 #FFFFFF、#00D26A"`（默认字体颜色跟随系统主题）  
-  更改配置文件后，重新启动 BlueGauge
-3. 其他：图标颜色支持连接配色，在`设置`-`托盘选项`-`设置图标颜色为连接配色`（已连接为绿色，断开连接为红色）
+本版本为 `ROG Strix Impact II Wireless` 增加了 ASUS HID 专用读取逻辑，通过 USB/HID 查询包读取电量。这个型号的协议只返回粗略档位，所以托盘中会显示：
 
-<div align="center">
-    <img src="screenshots/battery.png" style="width=90%; display:block; margin:0 auto 10px;" />
-    <div style="display:flex; justify-content:space-between; width:100%; margin:0 auto;">
-        <img src="screenshots/connect.png" style="width:45%; display:block;">
-        <img src="screenshots/disconnect.png" style="width:45%; display:block;">
-    </div>
-</div>
+- `25%`
+- `50%`
+- `75%`
+- `100%`
 
-</details>
- 
+这不是显示精度问题，而是鼠标固件本身只提供这样的电量档位。
 
-<details>
-<summary>使用圆环图标</summary>
+## AirPods 说明
 
-1. 勾选需显示电量设备    
-2. 打开托盘菜单 - `设置` - `托盘选项` - `图标样式` - `圆环图标`
-3. 可选设置相关参数，打开托盘菜单 - `设置` - `打开配置`   
-`highlight_color`（电量颜色） = `"十六进制颜色代码，如 #4CD082"`（默认绿色，当设备低电量时为红色）    
-`background_color`（无电量颜色） = `"十六进制颜色代码，如 #DADADA"`（默认灰色随系统主题调整）   
-    更改配置文件后，重新启动 BlueGauge 
-4. 其他：图标颜色支持连接配色，在`设置`-`托盘选项`-`设置图标颜色为连接配色`
+正版 AirPods 在 Windows 上经常不会通过标准蓝牙属性暴露电量。本版本增加了 Apple AirPods 专用支持，会监听 Apple BLE 广播包并解析电量。
 
-<div align="center">
-    <div style="display:flex; justify-content:space-between; width:100%; margin:0 auto;">
-        <img src="screenshots/ring.png" style="width:48%; display:block;">
-        <img src="screenshots/ring_low_battery.png" style="width:48%; display:block;">
-    </div>
-    <img src="screenshots/ring_custom.png" style="width=90%; display:block; margin:5 auto 10px;" />
-</div>
-</details>
+AirPods 显示可能包含：
 
+- `L`：左耳电量
+- `R`：右耳电量
+- `C`：充电盒电量
 
-<details>
-<summary>使用电池图标</summary>
+如果只看到左右耳，没有看到充电盒，通常是因为充电盒当时没有广播电量。打开盒盖、取放耳机或重新连接后，充电盒电量更容易刷新出来。
 
-注意：Windows10系统用户需要 Fluent 电池图标，可下载并安装 [Segoe Fluent Icons](https://aka.ms/SegoeFluentIcons)
-1. 勾选需显示电量设备    
-2. 打开托盘菜单 - `设置` - `托盘选项` - `图标样式` - `电池图标`
-3. 其他：图标颜色支持连接配色，在`设置`-`托盘选项`-`设置图标颜色为连接配色`
+## 使用方法
 
-<div align="center">
-    <div style="display:flex; justify-content:space-between; width:100%; margin:0 auto;">
-        <img src="screenshots/horizontal_battery_icon.png" style="width:48%; display:block;">
-        <img src="screenshots/vertical_battery_icon.png" style="width:48%; display:block;">
-    </div>
-</div>
+1. 运行 `BlueGauge.exe`。
+2. 程序会出现在 Windows 右下角通知区域。
+3. 鼠标悬停到托盘图标上，查看设备电量。
+4. 右键托盘图标，可以刷新设备、选择图标样式、设置通知和打开配置文件。
 
-</details>
+发布版文件位于：
 
+```text
+target/release/BlueGauge.exe
+```
 
-<details>
-<summary>使用自定义图标</summary>
+## 从源码构建
 
-1. 在软件目录下创建一个 `assets` 文件夹，
-    - 跟随系统主题：在 `assets` 文件夹中，分别创建 `dark` 和 `light` 文件夹，并分别添加 `0.png` 至 `100.png` 照片
-    - 不跟随系统主题：在 `assets` 文件夹中添加 `0.png` 至 `100.png` 照片  
-2. 重新启动 BlueGauge
+需要 Rust 工具链。
 
-</details>
+```powershell
+cargo build --release
+```
 
-2. 设置：显示最低电量的（已连接）设备
+运行测试：
 
-    注意：设置后无法手动选择需显示电量的设备，若需要手动选择需显示电量设备请关闭这个选项
+```powershell
+cargo test asus_mouse
+```
 
-3. 设置：蓝牙设备名称别名
+## 技术实现
 
-    1. 打开托盘菜单-`设置`-`打开配置`   
+- 常规蓝牙设备：读取 Windows PnP / Bluetooth 电量属性。
+- BLE 设备：读取 GATT Battery Service。
+- AirPods：监听 Apple BLE manufacturer data，解析 AirPods 电量广播。
+- ASUS ROG 鼠标：通过 `hidapi` 打开 ASUS HID 设备并读取专用电量包。
 
-    2. 在`[device_aliases]`下方添加需要别名的蓝牙设备（注意使用英文引号包裹名称）
+## 已知限制
 
-        - 例如 `"蓝牙设备名称" = "蓝牙别名"`
-        - 例如 `"WH-1000XM6" = "Sony Headphones"`
-        - 例如 `"NuPhy Air60 V2-1" = "NuPhy Air60"`
-        - 例如 `"HUAWEI FreeClip 2" = "HUAWEI FreeClip"`
+- 不是所有蓝牙设备都会向 Windows 暴露电量。
+- 不是所有 2.4GHz 无线设备都能通用读取电量，不同厂商通常使用不同私有协议。
+- ASUS ROG 鼠标支持目前只针对 `ROG Strix Impact II Wireless` 做了验证。
+- AirPods 充电盒电量依赖广播时机，可能不会每次都出现。
+- Windows 托盘提示文本长度有限，设备太多时可能被系统截断。
 
-4. 设置：托盘提示
+## 鸣谢
 
-    - 显示未连接的设备
-    - 限制设备名称长度
-    - 更改设备电量位置
+本项目基于 BlueGauge 原项目改造：
 
-5. 设置：通知
+- 原项目：[iKineticate/BlueGauge](https://github.com/iKineticate/BlueGauge)
 
-    - 低电量时通知
-    - 重新连接时通知
-    - 断开连接时通知
-    - 添加设备时通知
-    - 移除设备时通知
-    - 通知常驻屏幕
+协议参考：
 
-6. 设置：开机自启动 
+- AirPods 广播解析参考：[SpriteOvO/AirPodsDesktop](https://github.com/SpriteOvO/AirPodsDesktop)
+- ASUS ROG 鼠标协议线索参考：[seerge/g-helper](https://github.com/seerge/g-helper)
 
-## 下载
+## License
 
-默认请下载 **x86_64** 版本，特殊系统 Windows on ARM 下载 arm 版本
-
-1. [Github](https://github.com/iKineticate/BlueGauge/releases/latest)
-
-2. [蓝奏云](https://wwxv.lanzoul.com/b009hchxrc)（密码：6666）
-
-## 已知问题与建议
-
-### 1. 无法获取 2.4GHz 设备电量信息
-
-不同的 2.4GHz 设备的通信协议不同，无法做到统一获取电量信息。如需获取设备电量，需要获取设备的VID和PID，然后通过 Wireshark 和 USBPcap 第三方软件嗅探设备电量发生变化时发送的数据包，并解析数据包，获取电量信息，极其复杂麻烦。
-
-- **解决方案：**: 欢迎有能力的开发者贡献代码或提供思路，帮助扩展对这些设备的支持。
-
-### 2. 托盘提示内容不全
-
-托盘提示的字符长度有限，当设备过多和（或）设备名称过长时，提示文本会被截断，导致无法完整显示设备信息。
-
-**建议的解决办法：**
-
-1. **自定义蓝牙设备名称**：通过给蓝牙名称别名缩短其名称长度。
-
-2. **限制设备名称长度**：对设备名称的字符长度进行限制，确保其在托盘通知区域内完整显示。
-
-3. **隐藏未连接的设备**：对于未连接的设备，可以考虑不在托盘通知中显示，从而减少杂乱，避免文本溢出。
-
-### 3. 怎么在托盘显示多个设备电量？
-
-- **解决方案：**: 另外创建一个文件夹，并复制 `BlueGauge.exe` 和 `BlueGague.toml`到该文件夹，然后重命名 `BlueGauge.exe` 为其他名称（不建议使用中文命名），最后打开并设置显示电量为其他蓝牙设备、开机自启动等设置即可。
-
-### 4. 托盘提示中的连接指示器无颜色
-
-托盘提示中的带颜色连接指示器仅支持 Windows11
-
-### 5. 设备电量与预期不符
-
-可能是设备只报告特定值，例如：
-
- - 可能只显示10%、20%、30%，...，100%
-
- - 可能只显示0%、50%、100%
-
-## 其他蓝牙电量软件
-
- - 支持较多设备：
-
-    - [MagicPods](https://apps.microsoft.com/detail/9P6SKKFKSHKM) (**付费**)   
-
-    - [Bluetooth Battery Monitor](https://www.bluetoothgoodies.com/) (**付费**)   
-
- - 苹果：[AirPodsDesktop](https://github.com/SpriteOvO/AirPodsDesktop)
-
- - 华为：[OpenFreebuds](https://github.com/melianmiko/OpenFreebuds)
-
- - 三星：  
-
-    - [Galaxy Buds](https://apps.microsoft.com/detail/9NHTLWTKFZNB)   
-
-    - [Galaxy Buds Client](https://github.com/timschneeb/GalaxyBudsClient)  
-
-- 罗技: [elem](https://github.com/Fuwn/elem)   
-
-- 赛睿: [Arctis Battery Indicator](https://github.com/aarol/arctis-battery-indicator)   
+MIT

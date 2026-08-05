@@ -1,5 +1,6 @@
 use crate::{
     bluetooth::{
+        asus_mouse::get_asus_mouse_devices_info,
         ble::{find_ble_devices, get_ble_devices_info},
         btc::{find_btc_devices, get_btc_devices_info},
     },
@@ -19,13 +20,20 @@ pub static BT_INFO_MAP: LazyLock<DashMap<u64, BluetoothInfo>> = LazyLock::new(Da
 
 pub async fn init_bluetooth_info() -> Result<()> {
     let (btc_devices, ble_devices) = find_bluetooth_devices().await?;
-    let bt_devices_info = get_bluetooth_devices_info((&btc_devices, &ble_devices)).await?;
+    let bt_devices_info = get_bluetooth_devices_info((&btc_devices, &ble_devices))
+        .await
+        .inspect_err(|e| warn!("Failed to get Bluetooth devices info: {e}"))
+        .unwrap_or_else(|_| DashMap::new());
+    let asus_mouse_info = get_asus_mouse_devices_info()
+        .await
+        .inspect_err(|e| warn!("Failed to get ASUS mouse devices info: {e}"))
+        .unwrap_or_else(|_| DashMap::new());
 
     let mut config = CONFIG.write().unwrap();
 
     BT_INFO_MAP.clear();
 
-    for (addr, i) in bt_devices_info {
+    for (addr, i) in bt_devices_info.into_iter().chain(asus_mouse_info) {
         let name = i.name.clone();
         BT_INFO_MAP.insert(addr, i);
         config.device_aliases.entry(name.clone()).or_insert(name);
@@ -41,12 +49,18 @@ pub enum BluetoothType {
     Classic(/* Instance ID */ String),
     #[default]
     LowEnergy,
+    AsusHid {
+        path: String,
+        vendor_id: u16,
+        product_id: u16,
+    },
 }
 
 #[derive(Default, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct BluetoothInfo {
     pub name: String,
     pub battery: u8,
+    pub battery_display: Option<String>,
     pub status: bool,
     pub address: u64,
     pub r#type: BluetoothType,
@@ -67,6 +81,10 @@ impl BluetoothInfo {
 
     pub fn is_ble(&self) -> bool {
         self.r#type.is_low_energy()
+    }
+
+    pub fn is_asus_hid(&self) -> bool {
+        self.r#type.is_asus_hid()
     }
 }
 

@@ -88,12 +88,14 @@ pub fn convert_tray_info() -> String {
                     let name = config.device_aliases.get(&info.name).unwrap_or(&info.name);
                     truncate_with_ellipsis(should_truncate_name, name, 10)
                 };
-                let battery = info.battery;
+                let battery = info
+                    .battery_display
+                    .unwrap_or_else(|| format!("{}%", info.battery));
                 let status_icon = if info.status { "🟢" } else { "🔴" };
                 let info = if should_prefix_battery {
-                    format!("{status_icon}{battery}% - {name}")
+                    format!("{status_icon}{battery} - {name}")
                 } else {
-                    format!("{status_icon}{name} - {battery}%")
+                    format!("{status_icon}{name} - {battery}")
                 };
                 Some(info)
             } else {

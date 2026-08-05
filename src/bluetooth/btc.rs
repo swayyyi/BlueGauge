@@ -41,6 +41,19 @@ pub struct PnpDeviceInfo {
     pub instance_id: String,
 }
 
+pub fn is_supported_airpods_instance_id(instance_id: &str) -> bool {
+    let id = instance_id.to_ascii_uppercase();
+    id.contains("VID&0001004C_PID&2002")
+        || id.contains("VID&0001004C_PID&200E")
+        || id.contains("VID&0001004C_PID&200F")
+        || id.contains("VID&0001004C_PID&2013")
+        || id.contains("VID&0001004C_PID&2014")
+        || id.contains("VID&0001004C_PID&2019")
+        || id.contains("VID&0001004C_PID&201B")
+        || id.contains("VID&0001004C_PID&2024")
+        || id.contains("VID&0001004C_PID&2027")
+}
+
 pub async fn find_btc_devices() -> Result<Vec<BluetoothDevice>> {
     let btc_aqs_filter = BluetoothDevice::GetDeviceSelectorFromPairingState(true)?;
 
@@ -130,6 +143,7 @@ fn process_btc_device(
     Ok(BluetoothInfo {
         name: btc_name,
         battery: btc_battery,
+        battery_display: None,
         status: btc_status,
         address: btc_address,
         r#type: BluetoothType::Classic(pnp_instance_id),
@@ -165,6 +179,7 @@ pub async fn get_btc_info_device_frome_address(
     Ok(BluetoothInfo {
         name,
         battery: pnp_device_info.battery,
+        battery_display: None,
         status,
         address,
         r#type: BluetoothType::Classic(pnp_device_info.instance_id),
@@ -192,15 +207,19 @@ async fn get_pnp_devices_info(
             continue;
         };
 
-        let Some(battery) = props
-            .remove(&DEVPKEY_BLUETOOTH_BATTERY.into())
-            .and_then(|value| match value {
-                PnpDevicePropertyValue::Byte(v) => Some(v),
-                _ => None,
-            })
-        else {
+        let battery =
+            props
+                .remove(&DEVPKEY_BLUETOOTH_BATTERY.into())
+                .and_then(|value| match value {
+                    PnpDevicePropertyValue::Byte(v) => Some(v),
+                    _ => None,
+                });
+
+        if battery.is_none()
+            && !is_supported_airpods_instance_id(&pnp_device_node_info.device_instance_id)
+        {
             continue;
-        };
+        }
 
         let Some(address) = props
             .remove(&DEVPKEY_Bluetooth_DeviceAddress.into())
@@ -215,7 +234,7 @@ async fn get_pnp_devices_info(
         pnp_devices_info.insert(
             address,
             PnpDeviceInfo {
-                battery,
+                battery: battery.unwrap_or_default(),
                 instance_id: pnp_device_node_info.device_instance_id,
             },
         );
